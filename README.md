@@ -25,6 +25,7 @@ Architecture diagram (high-level):
 Diagram notes:
 - The service uses an outbox to ensure database and message broker write consistency.
 - Kafka topics are defined in [src/main/java/com/dinesh/notificationservice/infrastructure/kafka/KafkaTopics.java](src/main/java/com/dinesh/notificationservice/infrastructure/kafka/KafkaTopics.java).
+- Notification events are partitioned to preserve ordering for related notification streams.
 
 ## Key Components
 
