@@ -45,6 +45,16 @@ Diagram notes:
 6. `NotificationProcessor` routes to a channel via `ChannelFactory` (email/sms/push) and attempts delivery.
 7. If delivery fails, retry logic in `RetryWorker`/`RetryBackoffCalculator` handles backoff and dead-lettering (`DlqProducer`).
 
+## Codebase Evaluation
+
+- **Idempotency is implemented** at request-level. `NotificationRequest` includes `idempotencyKey`, `NotificationService` checks `notificationRepository.findByIdempotencyKey(...)`, and the `Notification` entity has a unique database index on `idempotencyKey`.
+- **Ordering is supported** through Kafka partitioning. `KafkaTopicConfig` creates `notification-events` and `notification-dlq` with 3 partitions, while `NotificationProducer` uses `userId_type` as the Kafka key.
+- **Reliability is strong** via the outbox pattern. `OutboxEvent` records are persisted first and published later by `OutboxPublisher`, reducing the risk of lost events during transient broker failures.
+- **Failure handling exists** for both retries and dead-lettering. `RetryWorker` / `RetryBackoffCalculator` manage retry attempts, and `NotificationProcessor` uses `DlqProducer` to send failed events to the DLQ.
+- **Important implementation note:** There is a topic name mismatch risk in the current codebase: `NotificationProducer` sends to `notifications-events` while `NotificationConsumer` listens on `notification-events`. This should be aligned before production use.
+- **Response semantics:** The API returns success after persistence and outbox creation; delivery is eventually consistent, not synchronous.
+- **Code organization:** Clear separation exists between API, domain service, persistence, messaging infra, and worker/processor layers, which makes the service easier to maintain and extend.
+
 ## Decisions & Tradeoffs
 
 - Outbox Pattern: chosen to guarantee atomicity between DB writes and Kafka publishes in environments without distributed transactions. Tradeoff: additional storage and publishing complexity; requires a background publisher (`OutboxPublisher`).
@@ -84,15 +94,10 @@ docker-compose up -d
 
 ## Future improvements
 
-- Add idempotency keys and de-dup handling for exactly-once delivery semantics.
+- Extend request-level idempotency to stronger exactly-once semantics and replay-safe outbox processing.
 - Add metrics and distributed tracing (Prometheus + OpenTelemetry).
 - Provide Kubernetes manifests and Helm chart for production deployment.
 - Add automated DLQ replay tooling and a small web UI for observability.
 
 ---
 
-If you want, I can also:
-
-- add a UML diagram image file to the repo;
-- add a `docker-compose.kafka.yml` example for local testing;
-- or create CONTRIBUTING and CODE_OF_CONDUCT stubs.
